@@ -1,0 +1,23 @@
+{
+  "$comment": [
+    "CockroachDB Cloud managed MCP server — read-only audit plane for Aegis.",
+    "Paste the `mcpServers` object into your MCP client's config:",
+    "  Claude Code : ~/.claude.json  (or .mcp.json in the project root)",
+    "  Cursor      : ~/.cursor/mcp.json",
+    "  VS Code     : .vscode/mcp.json",
+    "Replace {your-cluster-id} and {your-service-account-api-key}, or delete the",
+    "`headers` block entirely to authenticate with OAuth 2.1 + PKCE instead.",
+    "Read-only is the server default; write tools require explicit opt-in and",
+    "Aegis never enables them."
+  ],
+  "mcpServers": {
+    "cockroachdb-cloud": {
+      "type": "http",
+      "url": "https://cockroachlabs.cloud/mcp",
+      "headers": {
+        "mcp-cluster-id": "{your-cluster-id}",
+        "Authorization": "Bearer {your-service-account-api-key}"
+      }
+    }
+  }
+}

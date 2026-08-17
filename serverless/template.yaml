@@ -1,0 +1,150 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Aegis — Governed Memory Fleet. The Write-Gate behind API Gateway, backed by
+  CockroachDB Cloud, Amazon Bedrock and Amazon S3.
+
+Parameters:
+  DatabaseUrl:
+    Type: String
+    NoEcho: true
+    Description: CockroachDB Cloud connection string (postgresql://...?sslmode=verify-full)
+  BedrockLlmModelId:
+    Type: String
+    Default: us.anthropic.claude-sonnet-5
+    Description: Bedrock model ID or cross-region inference profile for the gatekeeper
+  BedrockEmbeddingModelId:
+    Type: String
+    Default: amazon.titan-embed-text-v2:0
+  EmbeddingDim:
+    Type: String
+    Default: "1024"
+    Description: Must match the VECTOR width applied by scripts/migrate.ts
+  ProvenanceBucketName:
+    Type: String
+    Description: S3 bucket for raw source-document provenance
+  SimilarityThreshold:
+    Type: String
+    Default: "0.35"
+  GateTopK:
+    Type: String
+    Default: "5"
+  GateMinConfidence:
+    Type: String
+    Default: "0.35"
+
+Globals:
+  Function:
+    Runtime: nodejs20.x
+    Timeout: 60
+    MemorySize: 1024
+    Architectures: [arm64]
+    Tracing: Active
+    Environment:
+      Variables:
+        NODE_OPTIONS: --enable-source-maps
+        DATABASE_URL: !Ref DatabaseUrl
+        DATABASE_POOL_MAX: "3"
+        BEDROCK_LLM_MODEL_ID: !Ref BedrockLlmModelId
+        BEDROCK_EMBEDDING_MODEL_ID: !Ref BedrockEmbeddingModelId
+        EMBEDDING_DIM: !Ref EmbeddingDim
+        AEGIS_BEDROCK_MODE: live
+        AEGIS_S3_MODE: live
+        S3_BUCKET: !Ref ProvenanceBucketName
+        S3_PREFIX: raw/
+        GATE_SIMILARITY_THRESHOLD: !Ref SimilarityThreshold
+        GATE_TOP_K: !Ref GateTopK
+        GATE_MIN_CONFIDENCE: !Ref GateMinConfidence
+
+Resources:
+  ProvenanceBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Ref ProvenanceBucketName
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      VersioningConfiguration:
+        # Provenance is an audit artefact: keep every version.
+        Status: Enabled
+
+  AegisApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: v1
+      Throttle:
+        BurstLimit: 100
+        RateLimit: 50
+      CorsConfiguration:
+        AllowOrigins: ["*"]
+        AllowHeaders: ["content-type"]
+        AllowMethods: ["GET", "POST", "OPTIONS"]
+
+  WriteGateFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: aegis-write-gate
+      Description: Adversarial Write-Gate for the Aegis agent memory substrate
+      CodeUri: ../dist/
+      Handler: lambda.handler
+      Events:
+        SubmitMemory:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref AegisApi
+            Path: /memory/submit
+            Method: POST
+        ListMemories:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref AegisApi
+            Path: /memories
+            Method: GET
+        AuditLogs:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref AegisApi
+            Path: /audit-logs
+            Method: GET
+        SimulateSwarm:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref AegisApi
+            Path: /simulate-swarm
+            Method: POST
+        Health:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref AegisApi
+            Path: /health
+            Method: GET
+      Policies:
+        - Statement:
+            - Sid: InvokeBedrockModels
+              Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+                - bedrock:InvokeModelWithResponseStream
+              Resource:
+                - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}::foundation-model/*"
+                - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/*"
+        - S3CrudPolicy:
+            BucketName: !Ref ProvenanceBucketName
+
+Outputs:
+  ApiEndpoint:
+    Description: Base URL for the Aegis Write-Gate API
+    Value: !Sub "https://${AegisApi}.execute-api.${AWS::Region}.amazonaws.com/v1"
+  SubmitEndpoint:
+    Description: POST here from your agent fleet
+    Value: !Sub "https://${AegisApi}.execute-api.${AWS::Region}.amazonaws.com/v1/memory/submit"
+  ProvenanceBucketArn:
+    Value: !GetAtt ProvenanceBucket.Arn

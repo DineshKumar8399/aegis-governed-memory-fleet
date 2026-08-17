@@ -1,0 +1,44 @@
+# Local CockroachDB for development. Pinned to a release with VECTOR support
+# (v25.2+ / C-SPANN vector indexes).
+#
+#   docker compose up -d
+#   npm run db:migrate && npm run db:seed
+#
+# DB Console: http://localhost:8080
+# DATABASE_URL="postgresql://root@localhost:26257/aegis?sslmode=disable"
+
+services:
+  cockroach:
+    image: cockroachdb/cockroach:v25.3.3
+    container_name: aegis-cockroach
+    command: start-single-node --insecure --http-addr=0.0.0.0:8080
+    ports:
+      - "26257:26257" # SQL
+      - "8080:8080" # DB Console
+    volumes:
+      - cockroach-data:/cockroach/cockroach-data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/health?ready=1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+
+  # Creates the `aegis` database once the node is accepting connections.
+  cockroach-init:
+    image: cockroachdb/cockroach:v25.3.3
+    container_name: aegis-cockroach-init
+    depends_on:
+      cockroach:
+        condition: service_healthy
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        cockroach sql --insecure --host=cockroach:26257 \
+          -e "CREATE DATABASE IF NOT EXISTS aegis;" \
+          -e "SET CLUSTER SETTING feature.vector_index.enabled = true;"
+    restart: "no"
+
+volumes:
+  cockroach-data:

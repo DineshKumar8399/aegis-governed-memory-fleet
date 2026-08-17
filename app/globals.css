@@ -1,0 +1,248 @@
+@import "tailwindcss";
+
+/* ── Design tokens ─────────────────────────────────────────────────────────
+   A single dark surface ramp plus four verdict colours. Every panel, border
+   and label in the dashboard resolves to one of these, so the whole UI reads
+   as one system rather than a pile of components.                          */
+@theme {
+  --color-void: #05060a;
+  --color-abyss: #080a10;
+  --color-panel: #0c0f16;
+  --color-panel-2: #11151e;
+  --color-panel-3: #171c27;
+
+  --color-line: #1e2431;
+  --color-line-soft: #161b26;
+
+  --color-ink: #e8ecf4;
+  --color-ink-2: #aeb7c9;
+  --color-ink-3: #6f7a90;
+  --color-ink-4: #4a5365;
+
+  --color-brand: #7c8cff;
+  --color-brand-soft: #2b3162;
+
+  --color-allowed: #34d399;
+  --color-conflict: #fb7185;
+  --color-superseded: #fbbf24;
+  --color-merged: #38bdf8;
+
+  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Code", Menlo,
+    Consolas, monospace;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Inter, Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+
+  --radius-panel: 14px;
+}
+
+@layer base {
+  * {
+    border-color: var(--color-line);
+  }
+
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    background: var(--color-void);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    /* Faint field gradient so large empty areas are not flat black. */
+    background-image:
+      radial-gradient(900px 480px at 12% -8%, rgba(124, 140, 255, 0.09), transparent 62%),
+      radial-gradient(760px 420px at 92% 4%, rgba(56, 189, 248, 0.055), transparent 60%);
+    background-attachment: fixed;
+  }
+
+  ::selection {
+    background: rgba(124, 140, 255, 0.32);
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-panel-3);
+    border-radius: 8px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #232a38;
+    background-clip: content-box;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-brand);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  input,
+  textarea,
+  select,
+  button {
+    font: inherit;
+  }
+}
+
+@layer components {
+  .panel {
+    background: linear-gradient(180deg, var(--color-panel) 0%, var(--color-abyss) 100%);
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-panel);
+  }
+
+  .panel-flush {
+    background: var(--color-panel);
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-panel);
+  }
+
+  /* Small uppercase section labels used above every panel body. */
+  .eyebrow {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    color: var(--color-ink-3);
+  }
+
+  .field {
+    width: 100%;
+    background: var(--color-void);
+    border: 1px solid var(--color-line);
+    border-radius: 9px;
+    padding: 9px 11px;
+    font-size: 13px;
+    color: var(--color-ink);
+    transition: border-color 120ms ease, background 120ms ease;
+  }
+  .field::placeholder {
+    color: var(--color-ink-4);
+  }
+  .field:focus {
+    outline: none;
+    border-color: var(--color-brand);
+    background: #070910;
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    border-radius: 9px;
+    border: 1px solid var(--color-line);
+    background: var(--color-panel-2);
+    padding: 8px 14px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--color-ink-2);
+    transition: all 130ms ease;
+    cursor: pointer;
+  }
+  .btn:hover:not(:disabled) {
+    background: var(--color-panel-3);
+    color: var(--color-ink);
+    border-color: #2a3242;
+  }
+  .btn:disabled {
+    opacity: 0.42;
+    cursor: not-allowed;
+  }
+
+  .btn-primary {
+    background: linear-gradient(180deg, #6d7ef8 0%, #5563e8 100%);
+    border-color: #6d7ef8;
+    color: #f4f6ff;
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.14) inset;
+  }
+  .btn-primary:hover:not(:disabled) {
+    background: linear-gradient(180deg, #7e8dff 0%, #6470f2 100%);
+    border-color: #7e8dff;
+    color: #ffffff;
+  }
+
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    border-radius: 999px;
+    border: 1px solid var(--color-line);
+    background: var(--color-panel-2);
+    padding: 3px 9px;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--color-ink-2);
+    white-space: nowrap;
+  }
+
+  .mono {
+    font-family: var(--font-mono);
+    font-variant-ligatures: none;
+  }
+
+  .hairline {
+    border-top: 1px solid var(--color-line-soft);
+  }
+}
+
+@layer utilities {
+  .scroll-shadow {
+    /* Fades content into the panel edge instead of clipping it hard. */
+    mask-image: linear-gradient(
+      to bottom,
+      transparent 0,
+      black 12px,
+      black calc(100% - 12px),
+      transparent 100%
+    );
+  }
+
+  .animate-in {
+    animation: aegis-in 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  .animate-pulse-slow {
+    animation: aegis-pulse 2.4s ease-in-out infinite;
+  }
+}
+
+@keyframes aegis-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes aegis-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.42;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

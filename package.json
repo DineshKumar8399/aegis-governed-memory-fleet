@@ -1,0 +1,48 @@
+{
+  "name": "aegis-governed-memory-fleet",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Aegis — a governed memory layer for autonomous agent fleets. CockroachDB distributed vector search + Amazon Bedrock adversarial write-gate.",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test tests/*.test.ts",
+    "test:unit": "tsx --test tests/heuristics.test.ts",
+    "db:migrate": "tsx scripts/migrate.ts",
+    "db:seed": "tsx scripts/seed.ts",
+    "db:reset": "tsx scripts/migrate.ts --drop && tsx scripts/seed.ts",
+    "doctor": "tsx scripts/doctor.ts",
+    "build:lambda": "esbuild serverless/lambda.ts --bundle --platform=node --target=node20 --format=cjs --outfile=dist/lambda.js --sourcemap --external:@aws-sdk/* --external:pg-native",
+    "deploy:lambda": "npm run build:lambda && sam deploy --template-file serverless/template.yaml --guided"
+  },
+  "dependencies": {
+    "@aws-sdk/client-bedrock-runtime": "^3.1111.0",
+    "@aws-sdk/client-s3": "^3.1111.0",
+    "lucide-react": "^1.31.0",
+    "next": "^16.3.1",
+    "pg": "^8.23.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "zod": "^4.1.13"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/aws-lambda": "^8.10.160",
+    "@types/node": "^24.10.1",
+    "@types/pg": "^8.15.6",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "dotenv": "^17.2.4",
+    "esbuild": "^0.28.0",
+    "tailwindcss": "^4.3.3",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
+  },
+  "engines": {
+    "node": ">=20.9.0"
+  }
+}
