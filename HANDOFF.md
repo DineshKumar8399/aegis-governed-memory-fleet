@@ -7,7 +7,7 @@ _Last session: 2026-08-17. Everything below is committed to disk and verified wo
 ```bash
 docker compose up -d      # CockroachDB v25.3.3, already has a persistent volume
 npm run doctor            # green except Bedrock (no AWS creds on this machine)
-npm test                  # 27 tests, all passing (needs the cluster up)
+npm test                  # 33 tests, all passing (needs the cluster up)
 npm run dev               # http://localhost:3000
 ```
 
@@ -19,7 +19,7 @@ When shutting down, use `docker compose stop -t 60`. The default 10s timeout is
 not enough for CockroachDB to drain and Docker SIGKILLs it (exit 137). The data
 survives either way — it is crash-safe — but a clean exit 0 is better.
 
-Typecheck clean, `next build` passes, `npm run build:lambda` passes, all 27
+Typecheck clean, `next build` passes, `npm run build:lambda` passes, all 33
 tests pass, and the UI has now been driven in a real browser.
 
 ## Closed this session
@@ -59,7 +59,7 @@ badge on first paint is just the pre-fetch state, not a bug.
 
 ### 3. Test suite added
 
-`npm test` (27 tests) / `npm run test:unit` (no database needed).
+`npm test` (33 tests) / `npm run test:unit` (no database needed).
 
 Every DB test runs inside its own generated topic and cleans up after itself, so
 the suite never disturbs the seeded demo substrate. Verified: substrate still

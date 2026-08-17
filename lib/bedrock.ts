@@ -28,6 +28,32 @@ let client: BedrockRuntimeClient | undefined;
 let liveDisabledReason: string | null = null;
 /** Set once a live call has actually succeeded — proof, not configuration. */
 let liveConfirmed = false;
+/** Wall-clock at which the fallback latch is allowed to lift and retry once. */
+let retryLiveAt = 0;
+/** Consecutive failures, used to back the retry window off. */
+let consecutiveFailures = 0;
+
+/**
+ * How long to stay in fallback before trying Bedrock again.
+ *
+ * The latch exists so a credential-less or unreachable environment does not pay
+ * a network timeout on every single submission. But making it permanent means a
+ * *transient* Bedrock failure — a throttle, a brief network partition — demotes
+ * the process to the local gatekeeper until someone restarts it or hits
+ * `/api/health?probe=1` by hand. A long-lived deployment should heal itself.
+ *
+ * So the latch is time-bounded and backs off: 1 minute after the first failure,
+ * doubling to a 30-minute ceiling. Steady-state cost in an environment that will
+ * never have credentials is one failed call per window, not one per request.
+ */
+const FALLBACK_RETRY_BASE_MS = 60_000;
+const FALLBACK_RETRY_MAX_MS = 30 * 60_000;
+
+/** True when the live path should be attempted: never latched, or latch expired. */
+function liveAttemptAllowed(): boolean {
+  if (liveDisabledReason === null) return true;
+  return Date.now() >= retryLiveAt;
+}
 
 function getClient(): BedrockRuntimeClient {
   if (!client) {
@@ -65,6 +91,14 @@ export function bedrockAvailability(): {
           ? "live"
           : "unverified";
 
+  // In fallback, say when the latch lifts — "unreachable" reads as terminal
+  // otherwise, and the process does in fact heal itself.
+  const retryInMs = liveDisabledReason === null ? 0 : Math.max(0, retryLiveAt - Date.now());
+  const fallbackReason =
+    liveDisabledReason === null
+      ? null
+      : `${liveDisabledReason} (retrying in ${Math.ceil(retryInMs / 1000)}s)`;
+
   return {
     mode,
     state,
@@ -72,7 +106,7 @@ export function bedrockAvailability(): {
     reason:
       mode === "mock"
         ? "AEGIS_BEDROCK_MODE=mock"
-        : (liveDisabledReason ?? (state === "unverified" ? "no Bedrock call made yet" : null)),
+        : (fallbackReason ?? (state === "unverified" ? "no Bedrock call made yet" : null)),
     region: env.awsRegion,
     embeddingModelId: env.embeddingModelId,
     llmModelId: env.llmModelId,
@@ -83,6 +117,8 @@ export function bedrockAvailability(): {
 export function resetBedrockFallback(): void {
   liveDisabledReason = null;
   liveConfirmed = false;
+  retryLiveAt = 0;
+  consecutiveFailures = 0;
 }
 
 function handleLiveFailure(operation: string, err: unknown): void {
@@ -90,13 +126,33 @@ function handleLiveFailure(operation: string, err: unknown): void {
   if (env.bedrockMode === "live") {
     throw new Error(`Bedrock ${operation} failed (AEGIS_BEDROCK_MODE=live): ${message}`);
   }
-  if (liveDisabledReason === null) {
-    liveDisabledReason = `${operation}: ${message}`;
+
+  const firstFailure = liveDisabledReason === null;
+  consecutiveFailures++;
+  const backoff = Math.min(
+    FALLBACK_RETRY_BASE_MS * 2 ** (consecutiveFailures - 1),
+    FALLBACK_RETRY_MAX_MS,
+  );
+  liveDisabledReason = `${operation}: ${message}`;
+  retryLiveAt = Date.now() + backoff;
+
+  // Only announce the transition into fallback. Re-announcing on every expired
+  // retry would turn a credential-less dev run into a log flood.
+  if (firstFailure) {
     console.warn(
       `[bedrock] falling back to the local gatekeeper — ${liveDisabledReason}\n` +
-        `[bedrock] set AEGIS_BEDROCK_MODE=live to surface this as an error instead.`,
+        `[bedrock] will retry in ${Math.round(backoff / 1000)}s; ` +
+        `set AEGIS_BEDROCK_MODE=live to surface this as an error instead.`,
     );
   }
+}
+
+/** Clears the fallback latch after a live call proves Bedrock is reachable again. */
+function markLiveSuccess(): void {
+  liveConfirmed = true;
+  liveDisabledReason = null;
+  retryLiveAt = 0;
+  consecutiveFailures = 0;
 }
 
 // ── Embeddings ───────────────────────────────────────────────────────────────
@@ -113,7 +169,7 @@ export async function embedText(text: string): Promise<EmbeddingResult> {
   const started = Date.now();
   const dim = env.embeddingDim;
 
-  if (env.bedrockMode !== "mock" && liveDisabledReason === null) {
+  if (env.bedrockMode !== "mock" && liveAttemptAllowed()) {
     try {
       const body = JSON.stringify({
         inputText: text,
@@ -145,7 +201,7 @@ export async function embedText(text: string): Promise<EmbeddingResult> {
         );
       }
 
-      liveConfirmed = true;
+      markLiveSuccess();
       return {
         vector: decoded.embedding,
         source: "bedrock",
@@ -307,7 +363,7 @@ export async function adjudicate(args: {
 }): Promise<GateAdjudication> {
   const started = Date.now();
 
-  if (env.bedrockMode !== "mock" && liveDisabledReason === null) {
+  if (env.bedrockMode !== "mock" && liveAttemptAllowed()) {
     try {
       const modelId = env.llmModelId;
       const response = await getClient().send(
@@ -345,7 +401,7 @@ export async function adjudicate(args: {
           ? payload.conflictingFactId.trim()
           : null;
 
-      liveConfirmed = true;
+      markLiveSuccess();
       return {
         decision: normaliseDecision(payload.verdict ?? payload.decision),
         reason:

@@ -124,6 +124,14 @@ answer *"what did the fleet believe about pricing on 3 June, and for how long?"*
 > (`evaluator: "bedrock"` vs `"heuristic"`), and the header shows a live/fallback
 > badge, so a demo is never mistaken for a live run. **A database is still
 > required** — the vector search and the serializable write path are the point.
+>
+> The fallback is **self-healing and time-bounded**. Dropping to the local
+> gatekeeper latches, so an unreachable endpoint is not re-dialled on every
+> submission, but the latch expires: 1 minute after the first failure, backing
+> off to a 30-minute ceiling. A transient throttle or network blip therefore
+> heals on its own instead of demoting the process until someone restarts it.
+> `/api/health` reports the pending retry (`"…(retrying in 42s)"`) rather than
+> presenting the outage as terminal, and one live success clears the latch.
 
 ### 1. Install
 
@@ -178,7 +186,7 @@ in real time.
 ### 5. Run the tests
 
 ```bash
-npm test        # 27 tests: heuristics, write-gate, concurrency, vector index
+npm test        # 33 tests: heuristics, bedrock fallback, write-gate, concurrency, vector index
 npm run test:unit   # the offline-gatekeeper unit tests only — no database needed
 ```
 
@@ -552,7 +560,8 @@ Run `npm run doctor` first — it checks every dependency and names the fix.
 | `type "vector" does not exist` | CockroachDB older than v25.2. Upgrade, or use `docker compose up -d`. |
 | `at or near "vector": syntax error` on `CREATE VECTOR INDEX` | Same — the release predates C-SPANN vector indexes. |
 | Migration warns about `SET CLUSTER SETTING` | Harmless. The SQL user lacks `MODIFYCLUSTERSETTING`, or the setting does not exist on your release. Vector indexes are enabled by default on current versions. |
-| Bedrock badge shows "local gatekeeper" | Credentials did not resolve, or model access is not enabled for `BEDROCK_LLM_MODEL_ID` in your region. `npm run doctor` prints the underlying error. Set `AEGIS_BEDROCK_MODE=live` to make it fail loudly instead of falling back. |
+| Bedrock badge shows "local gatekeeper" | Credentials did not resolve, or model access is not enabled for `BEDROCK_LLM_MODEL_ID` in your region. `npm run doctor` prints the underlying error. Set `AEGIS_BEDROCK_MODE=live` to make it fail loudly instead of falling back. The badge also shows when the fallback will retry; it clears itself once a live call succeeds. |
+| Tuning `GATE_SIMILARITY_THRESHOLD` appears to do nothing | You are almost certainly running on the local embedder, which reads `GATE_SIMILARITY_THRESHOLD_LOCAL` (default `0.72`) instead. Thresholds are per-embedding-space — see the Write-Gate tuning block in `.env.example`. |
 | `Embedding width mismatch` | `EMBEDDING_DIM` does not match the model's output. Fix it, then `npm run db:migrate -- --drop`. |
 | `AccessDeniedException` from Bedrock | Enable model access in the Bedrock console for that region and grant `bedrock:InvokeModel`. Cross-region inference profiles also need `arn:aws:bedrock:*:*:inference-profile/*`. |
 | Everything is `ALLOWED`, nothing conflicts | The substrate is empty — the gate has nothing to contradict. Run `npm run db:seed`, or launch a swarm (it plants an anchor belief first). |

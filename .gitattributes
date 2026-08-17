@@ -1,0 +1,23 @@
+# Normalise line endings so a repo authored on Windows and cloned on
+# Linux/macOS produces byte-identical checkouts. Without this, core.autocrlf
+# rewrites every text file on checkout and cross-platform diffs show whole-file
+# changes that are pure line-ending noise.
+* text=auto eol=lf
+
+# Windows-only scripts must keep CRLF to remain executable by cmd.exe.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary assets: never touch.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.pdf binary
+
+# Generated: collapse in diffs and exclude from language statistics.
+package-lock.json -diff linguist-generated
