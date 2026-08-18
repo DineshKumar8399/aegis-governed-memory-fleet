@@ -46,23 +46,15 @@ async function ensureDatabaseExists(): Promise<void> {
     return;
   }
 
-  const probe = new pg.Client({
-    connectionString: env.databaseUrl,
-    ssl: /sslmode=disable/i.test(env.databaseUrl) ? false : { rejectUnauthorized: true },
-    connectionTimeoutMillis: 15_000,
-  });
-
-  try {
-    await probe.connect();
-    await probe.end();
-    return; // Database already reachable.
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    if (!/does not exist/i.test(message)) throw err;
-    await probe.end().catch(() => undefined);
-  }
-
-  warn(`Database "${dbName}" does not exist — creating it.`);
+  // Connect to `defaultdb` and issue an idempotent CREATE, rather than probing
+  // the target first.
+  //
+  // Probing does not work here, and both obvious probes give false positives:
+  // CockroachDB Cloud accepts a *connection* to a database that does not exist,
+  // and `SELECT current_database()` echoes back the name the session asked for
+  // regardless of whether it resolves. The failure only surfaces later, on the
+  // first real statement, as "no database or schema specified" — which is what
+  // a fresh cluster used to fail with on its very first migration.
   const adminUrl = new URL(env.databaseUrl);
   adminUrl.pathname = "/defaultdb";
   const admin = new pg.Client({
@@ -70,10 +62,22 @@ async function ensureDatabaseExists(): Promise<void> {
     ssl: /sslmode=disable/i.test(env.databaseUrl) ? false : { rejectUnauthorized: true },
     connectionTimeoutMillis: 15_000,
   });
+
   await admin.connect();
-  await admin.query(`CREATE DATABASE IF NOT EXISTS "${dbName}"`);
-  await admin.end();
-  ok(`Created database "${dbName}".`);
+  try {
+    const existing = await admin.query(
+      `SELECT 1 FROM [SHOW DATABASES] WHERE database_name = $1`,
+      [dbName],
+    );
+    if (existing.rowCount === 0) {
+      await admin.query(`CREATE DATABASE IF NOT EXISTS "${dbName}"`);
+      ok(`Created database "${dbName}".`);
+    } else {
+      info(`Database "${dbName}" already exists.`);
+    }
+  } finally {
+    await admin.end().catch(() => undefined);
+  }
 }
 
 async function main(): Promise<void> {

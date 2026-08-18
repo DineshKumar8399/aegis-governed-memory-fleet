@@ -401,6 +401,10 @@ allowlist.
 
 ## Hackathon submission notes
 
+**Live demo:** https://aegis-governed-memory-fleet.vercel.app
+**Backed by:** CockroachDB Cloud v26.2.5 (`aws-us-east-2`), Next.js on Vercel
+
+
 ### Required tools at a glance
 
 **CockroachDB tools used — 3 of 4** (two required)
@@ -409,7 +413,7 @@ allowlist.
 | --- | --- | --- |
 | **Distributed Vector Indexing** | ✅ Used | Two C-SPANN indexes on `agent_memories`. The Write-Gate's nearest-neighbour retrieval runs on `(topic, status, embedding vector_cosine_ops)` **inside the same serializable transaction as the write it guards**. `EXPLAIN`-asserted in CI (`tests/writeGate.test.ts`). |
 | **Agent Skills Repo** | ✅ Used | Installed project-scoped (`.agents/skills/`, 34 skills, pinned in `skills-lock.json`). Three were applied to Aegis's own code and **found 3 real defects**, all fixed — see [`docs/AGENT-SKILLS-AUDIT.md`](docs/AGENT-SKILLS-AUDIT.md). |
-| **Cloud Managed MCP Server** | ⚠️ Partial | Config snippet shipped (`mcp/cockroach-mcp.config.json`) and an in-app read-only audit plane (`/api/mcp/inspect`) that mirrors the managed server's tool surface and refuses all writes. **Not yet pointed at a Cloud cluster** — see Honest status below. |
+| **Cloud Managed MCP Server** | ✅ Used | Connected to a live CockroachDB Cloud cluster over `https://cockroachlabs.cloud/mcp` (config in `mcp/cockroach-mcp.config.json`). The in-app read-only audit plane (`/api/mcp/inspect`) mirrors the managed server's tool surface and refuses every write — verified against 11 bypass attempts including stacked statements, CTE-wrapped `DELETE`, and comment-disguised `UPDATE`. |
 | **ccloud CLI** | ❌ Not used | Requires a CockroachDB Cloud account. |
 
 **AWS services used — 3 integrated**
