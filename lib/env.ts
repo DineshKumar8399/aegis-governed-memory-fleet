@@ -5,13 +5,30 @@
 
 type Mode = "auto" | "live" | "mock";
 
+/**
+ * Where this process is running, so a missing-config error can name the fix that
+ * actually applies. Telling someone to "copy .env.example to .env.local" is
+ * useless advice on a serverless deployment, where there is no local file to
+ * edit and the variable belongs in the platform's environment settings.
+ */
+function runtimeHint(name: string): string {
+  if (process.env.VERCEL !== undefined) {
+    return (
+      `Set it in your Vercel project (Settings -> Environment Variables, or ` +
+      `\`vercel env add ${name} production\`), then redeploy.`
+    );
+  }
+  if (process.env.AWS_LAMBDA_FUNCTION_NAME !== undefined) {
+    return `Set it in the Lambda function's environment configuration, then redeploy.`;
+  }
+  return `Copy .env.example to .env.local and fill it in.`;
+}
+
 function str(name: string, fallback?: string): string {
   const raw = process.env[name];
   if (raw === undefined || raw === "") {
     if (fallback !== undefined) return fallback;
-    throw new Error(
-      `Missing required environment variable ${name}. Copy .env.example to .env.local and fill it in.`,
-    );
+    throw new Error(`Missing required environment variable ${name}. ${runtimeHint(name)}`);
   }
   return raw;
 }
