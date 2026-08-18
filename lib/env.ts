@@ -69,8 +69,22 @@ export const env = {
   get databaseCaCertPath() {
     return optional("DATABASE_CA_CERT_PATH");
   },
+  /**
+   * Pool size per *process*, which is the subtlety on serverless.
+   *
+   * A long-running server has one pool, so 10 connections is one pool of 10. On
+   * Vercel or Lambda every warm instance holds its own pool, so the cluster sees
+   * `max × instances` — and a traffic spike that fans out to 50 instances would
+   * open 500 connections against a cluster whose plan may cap far below that.
+   * Exhausting the limit fails requests for everyone, including the health check.
+   *
+   * So the default is small where instances multiply and generous where they do
+   * not. An explicit DATABASE_POOL_MAX always wins.
+   */
   get databasePoolMax() {
-    return int("DATABASE_POOL_MAX", 10);
+    const serverless =
+      process.env.VERCEL !== undefined || process.env.AWS_LAMBDA_FUNCTION_NAME !== undefined;
+    return int("DATABASE_POOL_MAX", serverless ? 3 : 10);
   },
 
   // ── Bedrock ──
