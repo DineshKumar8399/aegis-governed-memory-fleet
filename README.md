@@ -401,6 +401,47 @@ allowlist.
 
 ## Hackathon submission notes
 
+### Required tools at a glance
+
+**CockroachDB tools used — 3 of 4** (two required)
+
+| Tool | Status | What the agent actually did with it |
+| --- | --- | --- |
+| **Distributed Vector Indexing** | ✅ Used | Two C-SPANN indexes on `agent_memories`. The Write-Gate's nearest-neighbour retrieval runs on `(topic, status, embedding vector_cosine_ops)` **inside the same serializable transaction as the write it guards**. `EXPLAIN`-asserted in CI (`tests/writeGate.test.ts`). |
+| **Agent Skills Repo** | ✅ Used | Installed project-scoped (`.agents/skills/`, 34 skills, pinned in `skills-lock.json`). Three were applied to Aegis's own code and **found 3 real defects**, all fixed — see [`docs/AGENT-SKILLS-AUDIT.md`](docs/AGENT-SKILLS-AUDIT.md). |
+| **Cloud Managed MCP Server** | ⚠️ Partial | Config snippet shipped (`mcp/cockroach-mcp.config.json`) and an in-app read-only audit plane (`/api/mcp/inspect`) that mirrors the managed server's tool surface and refuses all writes. **Not yet pointed at a Cloud cluster** — see Honest status below. |
+| **ccloud CLI** | ❌ Not used | Requires a CockroachDB Cloud account. |
+
+**AWS services used — 3 integrated**
+
+| Service | Status | How |
+| --- | --- | --- |
+| **Amazon Bedrock** | ⚠️ Code complete, unexercised | Titan Text Embeddings V2 via `InvokeModelCommand`; Claude adjudication via `ConverseCommand` with a **forced tool call** so verdicts return schema-validated JSON, not prose. |
+| **Amazon S3** | ⚠️ Code complete, unexercised | Raw source documents archived per submission; the returned URI is stored on the memory row as the provenance anchor. |
+| **AWS Lambda + API Gateway** | ⚠️ Code complete, undeployed | `serverless/lambda.ts` + SAM template (HTTP API, throttling, arm64, X-Ray, least-privilege IAM). Builds to a 236 kB bundle. |
+
+### Honest status
+
+This project runs **end-to-end today**, but on a local CockroachDB in Docker and
+a deterministic local gatekeeper, because no AWS or CockroachDB Cloud credentials
+were available on the build machine.
+
+What that means precisely, so nothing here is overclaimed:
+
+- **Everything CockroachDB-side is real and verified.** Serializable write-gating,
+  atomic memory+audit commits, `40001` abort-and-replay (forced by a deliberate
+  read-write cycle in `tests/concurrency.test.ts`), C-SPANN vector search
+  confirmed by `EXPLAIN` at 800 rows, and all six schema constraints proven to
+  reject malformed writes.
+- **The AWS paths are written and typechecked but have never made a live call.**
+  Every verdict records which evaluator produced it (`bedrock` vs `heuristic`),
+  and the dashboard's status badges are three-valued (`live` / `unverified` /
+  `fallback`) specifically so a fallback run can never be mistaken for a live
+  one. Switching is one environment variable.
+- **The local fallback is lexical, not semantic.** It matches tokens; it does not
+  understand meaning. It exists so the distributed-systems claims can be
+  demonstrated without credentials — it is not a substitute for Titan.
+
 ### CockroachDB features used
 
 **1. Distributed vector indexing (`VECTOR` + C-SPANN, cosine)**

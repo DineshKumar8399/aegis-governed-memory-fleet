@@ -16,3 +16,6 @@ tsconfig.tsbuildinfo
 coverage/
 cockroach-data/
 certs/
+
+# Agent Skills are vendored via skills-lock.json; symlinked agent dirs are local.
+.claude/skills/

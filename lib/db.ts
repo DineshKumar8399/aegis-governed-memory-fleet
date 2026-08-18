@@ -60,7 +60,15 @@ export function getPool(): pgPkg.Pool {
     connectionString,
     max: env.databasePoolMax,
     ssl: buildSslConfig(connectionString),
-    idleTimeoutMillis: 30_000,
+    // Recycle connections on a bounded lifetime. Against a distributed cluster
+    // this is not hygiene, it is load distribution: a connection pinned to one
+    // node for the process lifetime keeps sending traffic there after a rolling
+    // restart or a scale-out, and the new nodes never pick up share. The jitter
+    // stops a whole fleet of pods from recycling in lockstep.
+    maxLifetimeSeconds: 1_800 + Math.floor(Math.random() * 300),
+    // 30s was aggressive enough to churn connections between bursts of swarm
+    // traffic; the reconnect cost outweighed the idle saving.
+    idleTimeoutMillis: 600_000,
     connectionTimeoutMillis: 15_000,
     application_name: "aegis-write-gate",
   });
@@ -96,11 +104,39 @@ export async function queryOne<T extends QueryResultRow = QueryResultRow>(
 }
 
 const RETRYABLE_SQLSTATE = "40001"; // serialization_failure
+const AMBIGUOUS_SQLSTATE = "40003"; // statement_completion_unknown
+
+function sqlState(err: unknown): string | undefined {
+  if (typeof err !== "object" || err === null) return undefined;
+  const code = (err as { code?: unknown }).code;
+  return typeof code === "string" ? code : undefined;
+}
 
 function isRetryable(err: unknown): boolean {
-  if (typeof err !== "object" || err === null) return false;
-  const code = (err as { code?: unknown }).code;
-  return code === RETRYABLE_SQLSTATE;
+  return sqlState(err) === RETRYABLE_SQLSTATE;
+}
+
+/**
+ * Raised for SQLSTATE 40003, where the commit's outcome is genuinely unknown —
+ * the transaction may have been applied even though the client got an error.
+ *
+ * This must never be folded in with `40001`. A serialization failure is a clean
+ * abort and replaying it is correct; an ambiguous commit replayed blind can
+ * double-apply the work. For the Write-Gate that would mean admitting a fact
+ * twice, or superseding a belief that was already superseded — so the gate
+ * surfaces it as a distinct, non-retryable failure and leaves the decision to
+ * the caller, who can re-read the audit trail to find out what actually landed.
+ */
+export class AmbiguousCommitError extends Error {
+  readonly code = AMBIGUOUS_SQLSTATE;
+  constructor(cause: unknown) {
+    super(
+      "Ambiguous commit (SQLSTATE 40003): the transaction may or may not have been " +
+        "applied. Do not blindly retry — re-read audit_gate_logs to determine the outcome.",
+    );
+    this.name = "AmbiguousCommitError";
+    this.cause = cause;
+  }
 }
 
 export interface RetryStats {
@@ -131,6 +167,9 @@ export async function withRetry<T>(
       // best-effort cleanup so the connection returns to the pool usable.
       await client.query("ROLLBACK").catch(() => undefined);
       lastError = err;
+      // Surface an ambiguous commit as its own type before the retry check, so
+      // it can never be mistaken for a clean abort and replayed.
+      if (sqlState(err) === AMBIGUOUS_SQLSTATE) throw new AmbiguousCommitError(err);
       if (!isRetryable(err) || attempt === maxAttempts) throw err;
       opts.onRetry?.(attempt, err);
       const backoffMs = Math.min(2 ** attempt * 25, 500) + Math.random() * 50;
